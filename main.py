@@ -172,8 +172,6 @@ def draw_screen(data, fonts, settings, fill_color):
         draw.text((value_x, value_y), value_text, font=fonts['top_right_value'], fill=fill_color)
         draw.text((unit_x, unit_y), unit, font=fonts['unit'], fill=fill_color)
 
-
-
     # Last update
     last_update_text = datetime.now().strftime("最後更新: %Y-%m-%d %H:%M")
     update_w = fonts['last_update'].getbbox(last_update_text)[2]
