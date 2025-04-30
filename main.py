@@ -5,8 +5,8 @@ import time
 import textwrap
 import argparse
 import logging
+import requests
 from datetime import datetime
-from myutil import *
 from PIL import Image, ImageDraw, ImageFont
 
 # Logger
@@ -50,6 +50,7 @@ def load_fonts(settings):
         'light': ImageFont.truetype(os.path.join(FONT_DIR, settings['light_font']), 15),
         'chinese_bold': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_bold_font']), 14),
         'chinese_normal': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_normal_font']), 14),
+        'chinese_light': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_light_font']), 14),
         'small_text': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 11),
         'top_right_value': ImageFont.truetype(os.path.join(FONT_DIR, settings['bold_font']), 20),
         'unit': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 11),
@@ -72,6 +73,7 @@ def fetch_data(settings):
         'nine_day_forecast': get_hko('fnd', settings['language']),
         'warning_summary': get_hko('warnsum', settings['language']),
         'warning_info': get_hko('warninginfo', settings['language']),
+        'special_weather': get_hko('swt', settings['language']),
         'openweathermap': get_openweathermap(settings['openweathermap_apikey'], 'HongKong')
     }
     logger.info('Data fetched successfully.')
@@ -86,7 +88,7 @@ def process_data(raw):
         if day[0] == today:
             sunrise, sunset = str(day[1]), str(day[3])
 
-    warnsum_items, warninfo_items = process_warning_data(raw['warning_summary'], raw['warning_info'])
+    warnsum_items, warninfo_items = process_warning_data(raw['warning_summary'], raw['warning_info'], raw['special_weather'])
     warnsum_items = warnsum_items or {'1': '沒有天氣警告'}
     warninfo_items = warninfo_items or {'1': ['沒有天氣警告']}
     logger.info('Data processed successfully.')
@@ -184,7 +186,7 @@ def draw_screen(data, fonts, settings, fill_color):
     draw.multiline_text((480, 248), "\n".join(wrapped_forecast), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
     # Warning Summary
-    position_warning_items(draw, process_warning_items(data['warnsum_items']), fonts['chinese_bold'], fill_color, start_x=56, y=220)
+    position_warning_items(draw, process_warning_items(data['warnsum_items']), fonts['chinese_bold'], fonts['chinese_light'], fill_color, start_x=56, y=220)
 
     # Warning Info
     wrapped_warning = []
@@ -212,6 +214,7 @@ def draw_screen(data, fonts, settings, fill_color):
 
     return image
 
+# Helper funtions
 def align_warnsum_items(warnsum_items, total_width=80):
     values = list(warnsum_items.values())
 
@@ -248,25 +251,25 @@ def process_warning_items(items):
     
     return result
 
-def position_warning_items(draw, items, font, fill_color, start_x=56, y=220, max_width=380):
+def position_warning_items(draw, items, bold_font, normal_font, fill_color, start_x=56, y=220, max_width=380):
     """Position warning items in left, center, and right positions"""
     num_items = len(items)
     
     if num_items == 1:
         # Single item - left align
         text = items[1]
-        draw.text((start_x, y), text, font=font, fill=fill_color)
+        draw.text((start_x, y), text, font=bold_font, fill=fill_color)
     
     elif num_items == 2:
         # Two items - position at left and center
         left_text = items[1]
         center_text = items[2]
         # Left align first item
-        draw.text((start_x, y), left_text, font=font, fill=fill_color)
+        draw.text((start_x, y), left_text, font=bold_font, fill=fill_color)
         # Center align second item
-        center_width = draw.textlength(center_text, font=font)
+        center_width = draw.textlength(center_text, font=bold_font)
         center_x = start_x + (max_width - center_width) // 2
-        draw.text((center_x, y), center_text, font=font, fill=fill_color)
+        draw.text((center_x, y), center_text, font=normal_font, fill=fill_color)
     
     elif num_items == 3:
         # Three items - position at left, center and right
@@ -275,17 +278,115 @@ def position_warning_items(draw, items, font, fill_color, start_x=56, y=220, max
         right_text = items[3]
         
         # Left align first item
-        draw.text((start_x, y), left_text, font=font, fill=fill_color)
+        draw.text((start_x, y), left_text, font=bold_font, fill=fill_color)
         
         # Center the middle item
-        center_width = draw.textlength(center_text, font=font)
+        center_width = draw.textlength(center_text, font=normal_font)
         center_x = start_x + (max_width - center_width) // 2
-        draw.text((center_x, y), center_text, font=font, fill=fill_color)
+        draw.text((center_x, y), center_text, font=normal_font, fill=fill_color)
         
         # Right align last item
-        right_width = draw.textlength(right_text, font=font)
+        right_width = draw.textlength(right_text, font=normal_font)
         right_x = start_x + max_width - right_width
-        draw.text((right_x, y), right_text, font=font, fill=fill_color)
+        draw.text((right_x, y), right_text, font=normal_font, fill=fill_color)
+
+def process_warning_data(warnsum_json, warninginfo_json, swt_json):
+    # Step 1: Merge warnsum and swt entries
+    combined_items = []
+
+    # Prepare warnsum entries
+    for code, val in warnsum_json.items():
+        combined_items.append({
+            'source': 'warnsum',
+            'code': code,
+            'updateTime': datetime.fromisoformat(val['updateTime'].replace(' ', '').replace('+08:00', '')),
+            'data': val
+        })
+
+    # Prepare swt entries
+    for idx, item in enumerate(swt_json.get('swt', [])):
+        combined_items.append({
+            'source': 'swt',
+            'code': f"SWT_{idx}",  # Generate unique code for SWT items
+            'updateTime': datetime.fromisoformat(item['updateTime'].replace(' ', '').replace('+08:00', '')),
+            'data': item
+        })
+
+    # Step 2: Sort by updateTime (latest first), take latest 3
+    combined_items.sort(key=lambda x: x['updateTime'], reverse=True)
+    latest_items = combined_items[:3]
+
+    # Step 3: Prepare warnsum_items
+    warnsum_items = {}
+    warninfo_items = {}
+
+    details_list = warninginfo_json.get('details', [])
+
+    for i, item in enumerate(latest_items, 1):
+        if item['source'] == 'warnsum':
+            code = item['code']
+            val = item['data']
+
+            # Build warnsum_items
+            if code in ['WRAIN', 'WFIRE']:
+                label = f"{val.get('type', '')}{val['name']}"
+            elif code == 'WTCSGNL':
+                label = val.get('type', '')
+            else:
+                label = val['name']
+            warnsum_items[str(i)] = label
+
+            # Build warninfo_items
+            for detail in details_list:
+                if detail.get('warningStatementCode') == code:
+                    warninfo_items[str(i)] = detail.get('contents', [])
+                    break
+            else:
+                warninfo_items[str(i)] = ["No detailed info found."]
+
+        else:  # source == 'swt'
+            warnsum_items[str(i)] = '特別天氣提示'
+            desc_text = item['data'].get('desc', '')
+            if desc_text:
+                warninfo_items[str(i)] = [desc_text]
+            else:
+                warninfo_items[str(i)] = ["特別天氣提示"]
+
+    return warnsum_items, warninfo_items
+
+def get_hko(data_type,language):
+    current_year = datetime.now().year
+    if data_type == 'SRS':
+        url = f"https://data.weather.gov.hk/weatherAPI/opendata/opendata.php?dataType={data_type}&year={current_year}&rformat=json"
+    else:
+        url = f"https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType={data_type}&lang={language}"
+    response = requests.get(url)
+    data = response.json()
+    # print(data)
+    if response.status_code == 200:
+        return data
+    else:
+        raise Exception(f"Cannot get weather information: {data}")
+
+def get_openweathermap(openweather_api_key,location):
+    url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={openweather_api_key}&units=metric"
+    response = requests.get(url)
+    data = response.json()
+    if response.status_code == 200:
+        return data
+        # temperature = data["main"]["temp"]
+        # condition = data["weather"][0]["description"]
+        # print(f"Current temperature in {CITY}: {temperature}°C, {condition}")
+    else:
+        raise Exception(f"Cannot get weather information: {data}")
+
+def deg_to_compass(deg):
+    directions = [
+        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+        "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"
+    ]
+    idx = int((deg + 11.25) / 22.5) % 16
+    return directions[idx]
 
 # Main loop
 def main():
