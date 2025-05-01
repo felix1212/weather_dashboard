@@ -17,6 +17,7 @@ Change log
 1.0.0 - Initial working version
 1.1.0 - Refactored program
 1.2.0 - Added sepcial weather tips data to warning information bracket. Further refactor application to move required functions to main.
+1.2.1 - Fine-tuned fonts and layouts
 '''
 
 # Logger
@@ -91,7 +92,7 @@ def fetch_data(settings):
     return data
 
 # Process Data
-def process_data(raw):
+def process_data(raw, settings):
     logger.info('Processing data...')
     today = datetime.now().strftime("%Y-%m-%d")
     sunrise = sunset = ''
@@ -111,7 +112,7 @@ def process_data(raw):
         'feels_like': round(raw['openweathermap']['main']['feels_like']),
         'wind_speed': round(raw['openweathermap']['wind']['speed'], 1),
         'wind_dir': deg_to_compass(raw['openweathermap']['wind']['deg']),
-        'current_temp': next((d['value'] for d in raw['local_weather']['temperature']['data'] if d['place'] == '沙田'), None),
+        'current_temp': next((d['value'] for d in raw['local_weather']['temperature']['data'] if d['place'] == settings['hko_location']), None),
         'current_humidity': raw['local_weather']['humidity']['data'][0]['value'],
         'current_weather_icon': raw['local_weather']['icon'][0],
         'max_temp': round(raw['openweathermap']['main']['temp_max']),
@@ -427,7 +428,7 @@ def main():
         try:
             logger.info('Starting refresh cycle...')
             raw_data = fetch_data(settings)
-            processed_data = process_data(raw_data)
+            processed_data = process_data(raw_data, settings)
             screen_image = draw_screen(processed_data, fonts, settings, fill_color)
 
             if mode == 'PRD':
