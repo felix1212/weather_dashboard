@@ -88,6 +88,8 @@ python main.py --mode PRD
 
 Logging is output to stdout by default and can be controlled via the `log_level` setting.
 
+![Version](https://img.shields.io/badge/version-1.2.1-green.svg)
+
 ## Change Log
 
 - **1.0.0** – Initial working version  
@@ -103,4 +105,4 @@ Logging is output to stdout by default and can be controlled via the `log_level`
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
