@@ -1,6 +1,6 @@
 # Weather Dashboard for Waveshare 7.3" E-Ink Display
 
-This Python-based weather dashboard fetches weather data from Hong Kong Observatory and OpenWeatherMap APIs, processes it, and renders a graphical display on a Waveshare 7.3-inch e-ink screen. It supports both development (`DEV`) and production (`PRD`) modes.
+This Python-based weather dashboard fetches weather data from Hong Kong Observatory and OpenWeatherMap APIs, processes it, and renders a graphical display on a Waveshare 7.3-inch e-ink screen.
 
 ## Features
 
@@ -14,10 +14,9 @@ This Python-based weather dashboard fetches weather data from Hong Kong Observat
   - Sunrise and sunset times
   - Latest warning summaries and details
   - 7-day weather forecast
-- Special Weather Tips (SWT) integration
 - Chinese font rendering
-- Configurable refresh interval
-- Supports direct output to e-ink or preview in DEV mode
+- Update data at a configurable refresh interval
+- Direct output to e-ink or preview in DEV mode
 
 ## Project Structure
 
@@ -70,7 +69,7 @@ refresh_seconds = 900
 
 ## Usage
 
-### DEV Mode (preview on screen)
+### DEV Mode (default one to preview on screen)
 
 ```bash
 python main.py --mode DEV
