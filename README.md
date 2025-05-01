@@ -24,9 +24,7 @@ This Python-based weather dashboard fetches weather data from Hong Kong Observat
 ```
 .
 ├── main.py                   # Main execution script
-├── process_warning_data.py  # Legacy warning data handler (deprecated by updated main.py logic)
 ├── settings.ini             # Configuration file
-├── swt.json                 # Sample SWT data
 ├── static/
 │   ├── fonts/               # TTF font files (English & Chinese)
 │   └── icon/
@@ -105,4 +103,4 @@ Logging is output to stdout by default and can be controlled via the `log_level`
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
