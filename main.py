@@ -9,6 +9,16 @@ import requests
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
+'''
+Weather Dashboard
+This application sends weather data to waveshare 7.3 inch e-ink display
+
+Change log
+1.0.0 - Initial working version
+1.1.0 - Refactored program
+1.2.0 - Added sepcial weather tips data to warning information bracket. Further refactor application to move required functions to main.
+'''
+
 # Logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # You can adjust this later based on settings
@@ -45,12 +55,13 @@ def load_config():
 def load_fonts(settings):
     logger.info("Loading fonts...")
     fonts = {
-        'bold': ImageFont.truetype(os.path.join(FONT_DIR, settings['bold_font']), 35),
-        'normal': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 15),
+        'bold': ImageFont.truetype(os.path.join(FONT_DIR, settings['bold_font']), 39),
+        'normal': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 20),
         'light': ImageFont.truetype(os.path.join(FONT_DIR, settings['light_font']), 15),
         'chinese_bold': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_bold_font']), 14),
         'chinese_normal': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_normal_font']), 14),
         'chinese_light': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_light_font']), 14),
+        'chinese_light_large': ImageFont.truetype(os.path.join(FONT_DIR, settings['chinese_light_font']), 17),
         'small_text': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 11),
         'top_right_value': ImageFont.truetype(os.path.join(FONT_DIR, settings['bold_font']), 20),
         'unit': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 11),
@@ -119,7 +130,7 @@ def draw_screen(data, fonts, settings, fill_color):
     # Title
     today_title = datetime.now().strftime('%A, %B %d')
     title_w, title_h = fonts['bold'].getbbox(today_title)[2:]
-    draw.text(((DISPLAY_WIDTH-title_w)/2, 20), today_title, font=fonts['bold'], fill=fill_color)
+    draw.text(((DISPLAY_WIDTH-title_w)/2, 18), today_title, font=fonts['bold'], fill=fill_color)
 
     # Current Weather
     weather_icon = Image.open(f"{ICON_DIR_LARGE}/{data['current_weather_icon']}.bmp")
@@ -127,8 +138,8 @@ def draw_screen(data, fonts, settings, fill_color):
     draw.text((230, 62), str(data['current_temp']), font=fonts['current_temp'], fill=fill_color)
     draw.text((335, 72), '°C', font=fonts['degree_celsius'], fill=fill_color)
     draw.text((238, 170), f"{data['max_temp']}° / {data['min_temp']}°", font=fonts['normal'], fill=fill_color)
-    draw.text((340, 167), "體感温度:", font=fonts['chinese_normal'], fill=fill_color)
-    draw.text((405, 170), f"{data['feels_like']}°", font=fonts['normal'], fill=fill_color)
+    draw.text((340, 169), "體感温度:", font=fonts['chinese_light_large'], fill=fill_color)
+    draw.text((416, 170), f"{data['feels_like']}°", font=fonts['normal'], fill=fill_color)
 
     # Sunrise/Sunset/Wind/Humidity
     static_info = [
