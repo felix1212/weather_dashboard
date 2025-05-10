@@ -6,7 +6,6 @@ import textwrap
 import argparse
 import logging
 import requests
-from textwrap import wrap
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
@@ -42,7 +41,7 @@ def load_config():
     config = configparser.ConfigParser()
     try:
         with open(CONFIG_FILE, 'r') as file:
-            logger.info(f"Loading configuration from {CONFIG_FILE}…")
+            logger.info(f"Loading configuration from {CONFIG_FILE}...")
         config.read(CONFIG_FILE, encoding='utf-8')
         settings = {k: v for k, v in config.items('Settings')}
         settings['max_lines'] = int(settings['max_lines'])
@@ -55,7 +54,7 @@ def load_config():
 
 # Load Fonts
 def load_fonts(settings):
-    logger.info("Loading fonts…")
+    logger.info("Loading fonts...")
     fonts = {
         'bold': ImageFont.truetype(os.path.join(FONT_DIR, settings['bold_font']), 39),
         'normal': ImageFont.truetype(os.path.join(FONT_DIR, settings['normal_font']), 20),
@@ -79,7 +78,7 @@ def load_fonts(settings):
 
 # Fetch Data
 def fetch_data(settings):
-    logger.info('Fetching data from APIs…')
+    logger.info('Fetching data from APIs...')
     data = {
         'local_forecast': get_hko('flw', settings['language']),
         'local_weather': get_hko('rhrread', settings['language']),
@@ -95,7 +94,7 @@ def fetch_data(settings):
 
 # Process Data
 def process_data(raw, settings):
-    logger.info('Processing data…')
+    logger.info('Processing data...')
     today = datetime.now().strftime("%Y-%m-%d")
     sunrise = sunset = ''
     for day in raw['srs'].get('data', []):
@@ -195,20 +194,13 @@ def draw_screen(data, fonts, settings, fill_color):
 
     # Forecast period description
     draw.text((480, 220), f"{data['forecast_period']}:", font=fonts['chinese_bold'], fill=fill_color)
-    wrapped_forecast = wrap(data['forecast_description'], width=19)
-    # Truncate to max_lines
-    max_lines = settings['max_lines']
-    truncated = len(wrapped_forecast) > max_lines
-    wrapped_forecast = wrapped_forecast[:max_lines]
-    # Add ellipsis if truncated
-    if truncated:
-        # Append ellipsis to the last line
+    wrapped_forecast = textwrap.wrap(data['forecast_description'], width=19)
+    if len(wrapped_forecast) > settings['max_lines']:
+        wrapped_forecast = wrapped_forecast[:settings['max_lines']]
+        # Add ellipsis to the last line if it's truncated
         last_line = wrapped_forecast[-1]
-        # Ensure ellipsis fits within the width
-        if len(last_line) > 3:
-            wrapped_warning[-1] = last_line[:-1] + '…'
-        else:
-            wrapped_forecast[-1] = '…'
+        if len(last_line) >= 16:  # Leave space for ellipsis
+            wrapped_forecast[-1] = last_line[:16] + '…'
     draw.multiline_text((480, 248), "\n".join(wrapped_forecast), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
     # Warning Summary
@@ -216,27 +208,14 @@ def draw_screen(data, fonts, settings, fill_color):
 
     # Warning Info
     wrapped_warning = []
-    line_limit = settings['max_lines']
-    line_count = 0
-    truncated = False
     for line in data['warninfo_items']['1']:
-        wrapped_lines = textwrap.wrap(line, width=27)
-        if line_count + len(wrapped_lines) > line_limit:
-            remaining = line_limit - line_count
-            if remaining > 0:
-                wrapped_warning.extend(wrapped_lines[:remaining])
-                truncated = True
-            break
-        else:
-            wrapped_warning.extend(wrapped_lines)
-            line_count += len(wrapped_lines)
-    # Add ellipsis if truncated
-    if truncated and wrapped_warning:
+        wrapped_warning.extend(textwrap.wrap(line, width=27))
+    if len(wrapped_warning) > settings['max_lines']:
+        wrapped_warning = wrapped_warning[:settings['max_lines']]
+        # Add ellipsis to the last line if it's truncated
         last_line = wrapped_warning[-1]
-        if len(last_line) > 3:
-            wrapped_warning[-1] = last_line[:-1] + '…'
-        else:
-            wrapped_warning[-1] = '…'
+        if len(last_line) >= 24:  # Leave space for ellipsis
+            wrapped_warning[-1] = last_line[:24] + '…'
     draw.multiline_text((56, 248), "\n".join(wrapped_warning), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
     # 7-day forecast
@@ -447,9 +426,9 @@ def main():
     if mode == 'PRD':
         from waveshare_epd import epd7in3e
         epd = epd7in3e.EPD()
-        logger.info('Initializing e-Ink screen…')
+        logger.info('Initializing e-Ink screen...')
         epd.init()
-        logger.info('Clearing e-Ink screen…')
+        logger.info('Clearing e-Ink screen...')
         epd.Clear()
         fill_color = epd.BLACK
     else:
@@ -458,7 +437,7 @@ def main():
 
     while True:
         try:
-            logger.info('Starting refresh cycle…')
+            logger.info('Starting refresh cycle...')
             raw_data = fetch_data(settings)
             processed_data = process_data(raw_data, settings)
             screen_image = draw_screen(processed_data, fonts, settings, fill_color)
@@ -468,15 +447,15 @@ def main():
             else:
                 screen_image.show()
             logger.info('Refresh cycle complete.')
-            logger.info(f"Waiting {settings['refresh_seconds']} seconds…")
+            logger.info(f"Waiting {settings['refresh_seconds']} seconds...")
             time.sleep(settings['refresh_seconds'])
 
         except KeyboardInterrupt:
             logger.info("Graceful shutdown requested.")
             if mode == 'PRD' and epd:
-                logger.info('Clearing e-Ink screen before exit…')
+                logger.info('Clearing e-Ink screen before exit...')
                 epd.Clear()
-                logger.info('Putting e-Ink screen to sleep…')
+                logger.info('Putting e-Ink screen to sleep...')
                 epd.sleep()
             logger.info('Shutdown complete.')
             break
