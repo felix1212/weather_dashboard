@@ -18,6 +18,7 @@ Change log
 1.1.0 - Refactored program
 1.2.0 - Added sepcial weather tips data to warning information bracket. Further refactor application to move required functions to main.
 1.2.1 - Fine-tuned fonts and layouts
+1.2.2 - Always display specific corresponding icons for special weather situation such as Typhoons
 '''
 
 # Logger
@@ -135,7 +136,30 @@ def draw_screen(data, fonts, settings, fill_color):
     draw.text(((DISPLAY_WIDTH-title_w)/2, 18), today_title, font=fonts['bold'], fill=fill_color)
 
     # Current Weather
-    weather_icon = Image.open(f"{ICON_DIR_LARGE}/{data['current_weather_icon']}.bmp")
+    # Mapping of special weather warning names to icon filenames
+    special_warning_map = {
+        '一號戒備信號': 'T1.bmp',
+        '三號強風信號': 'T3.bmp',
+        '八號東北烈風或暴風信號': 'T8NE.bmp',
+        '八號東南烈風或暴風信號': 'T8SE.bmp',
+        '八號西南烈風或暴風信號': 'T8SW.bmp',
+        '八號西北烈風或暴風信號': 'T8NW.bmp',
+        '九號烈風或暴風風力增強信號': 'T9.bmp',
+        '十號颶風信號': 'T10.bmp',
+        '黃色暴雨警告信號': 'AmberRainstorm.bmp',
+        '紅色暴雨警告信號': 'RedRainstorm.bmp',
+        '黑色暴雨警告信號': 'BlackRainstorm.bmp',
+    }
+    # Check if any warnsum_items value matches a warning name
+    warnsum_icon = None
+    for value in data['warnsum_items'].values():
+        if value in special_warning_map:
+            warnsum_icon = special_warning_map[value]
+            break
+    if warnsum_icon:
+        weather_icon = Image.open(f"{ICON_DIR_LARGE}/{warnsum_icon}")
+    else:
+        weather_icon = Image.open(f"{ICON_DIR_LARGE}/{data['current_weather_icon']}.bmp")
     image.paste(weather_icon, (56, 54))
     draw.text((280, 68), str(data['current_temp']), font=fonts['current_temp'], fill=fill_color)
     draw.text((385, 78), '°C', font=fonts['degree_celsius'], fill=fill_color)

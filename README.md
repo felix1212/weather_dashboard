@@ -85,14 +85,15 @@ python main.py --mode PRD
 
 Logging is output to stdout by default and can be controlled via the `log_level` setting.
 
-![Version](https://img.shields.io/badge/version-1.2.1-green.svg)
+![Version](https://img.shields.io/badge/version-1.2.2-green.svg)
 
 ## Change Log
 
 - **1.0.0** – Initial working version  
 - **1.1.0** – Refactored program  
 - **1.2.0** – Added special weather tips data to warning information bracket; refactored to move functions into `main.py`  
-- **1.2.1** – Fine-tuned fonts and layouts  
+- **1.2.1** – Fine-tuned fonts and layouts
+- **1.2.2** - Always display specific corresponding icons for special weather situation such as Typhoons
 
 ## Credits
 
