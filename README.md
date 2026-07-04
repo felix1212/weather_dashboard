@@ -87,7 +87,15 @@ Logging is output to stdout by default and can be controlled via the `log_level`
 
 ## Deployment
 
-Two helper scripts manage running the dashboard on a device (e.g. a Raspberry Pi): `start.sh` and `update.sh`. Both are excluded from git (they hardcode the device's absolute path) — copy them into the project directory on each device, adjusting `PROJECT_DIR` if it differs.
+Two helper scripts manage running the dashboard on a device (e.g. a Raspberry Pi): `start.sh` and `update.sh`. Both hardcode the device's absolute path, so the actual scripts are excluded from git — `start.sh.example` and `update.sh.example` are checked in as templates. On each device:
+
+```bash
+cp start.sh.example start.sh
+cp update.sh.example update.sh
+chmod +x start.sh update.sh
+```
+
+Then edit `PROJECT_DIR` in both files to match the device's actual path to this project.
 
 ### `start.sh`
 
@@ -95,7 +103,7 @@ Launches the dashboard in PRD mode using the device's virtual environment:
 
 ```bash
 #!/bin/bash
-PROJECT_DIR="/home/administrator/weather_dashboard"
+PROJECT_DIR="/path/to/weather_dashboard"
 cd "$PROJECT_DIR"
 "$PROJECT_DIR/venv/bin/python" main.py --mode PRD
 ```
@@ -112,7 +120,7 @@ To start it automatically on every boot, add it to the crontab:
 crontab -e
 ```
 ```
-@reboot /home/administrator/weather_dashboard/start.sh >> /home/administrator/weather_dashboard/crontab.log 2>&1
+@reboot /path/to/weather_dashboard/start.sh >> /path/to/weather_dashboard/crontab.log 2>&1
 ```
 
 ### `update.sh`

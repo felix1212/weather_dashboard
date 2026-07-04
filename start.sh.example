@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Set project directory
+PROJECT_DIR="/path/to/weather_dashboard"
+
+# Change to project directory
+cd "$PROJECT_DIR"
+
+# Run using the virtual environment's Python
+"$PROJECT_DIR/venv/bin/python" main.py --mode PRD

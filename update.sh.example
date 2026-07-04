@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+PROJECT_DIR="/path/to/weather_dashboard"
+BRANCH="${1:-main}"
+
+cd "$PROJECT_DIR"
+
+echo "== Currently deployed =="
+git log -1 --oneline
+
+# Untracked files (venv, static, waveshare_epd, settings.ini, start.sh) are never
+# touched by git - this guard is only about tracked files like main.py.
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    echo "ERROR: tracked files have local changes - resolve before updating:"
+    git status --short --untracked-files=no
+    exit 1
+fi
+
+echo "== Fetching and checking out $BRANCH =="
+git fetch origin
+git checkout "$BRANCH"
+git pull origin "$BRANCH"
+
+echo "== Installing any new dependencies =="
+"$PROJECT_DIR/venv/bin/pip" install -q -r requirements.txt
+
+echo "== Stopping running dashboard (SIGINT for graceful e-ink shutdown) =="
+pkill -INT -f "venv/bin/python main.py" || echo "  (no running instance found)"
+sleep 3
+
+echo "== Restarting dashboard =="
+nohup "$PROJECT_DIR/start.sh" >> "$PROJECT_DIR/crontab.log" 2>&1 &
+disown
+
+sleep 2
+echo "== Now deployed =="
+git log -1 --oneline
+echo
+echo "Tail crontab.log to confirm it's running:"
+echo "   tail -f $PROJECT_DIR/crontab.log"
