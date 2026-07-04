@@ -181,3 +181,5 @@ layout/
 static/
 sample responses/
 testing.py
+start.sh
+update.sh

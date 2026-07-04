@@ -85,7 +85,64 @@ python main.py --mode PRD
 
 Logging is output to stdout by default and can be controlled via the `log_level` setting.
 
-![Version](https://img.shields.io/badge/version-1.2.2-green.svg)
+## Deployment
+
+Two helper scripts manage running the dashboard on a device (e.g. a Raspberry Pi): `start.sh` and `update.sh`. Both are excluded from git (they hardcode the device's absolute path) — copy them into the project directory on each device, adjusting `PROJECT_DIR` if it differs.
+
+### `start.sh`
+
+Launches the dashboard in PRD mode using the device's virtual environment:
+
+```bash
+#!/bin/bash
+PROJECT_DIR="/home/administrator/weather_dashboard"
+cd "$PROJECT_DIR"
+"$PROJECT_DIR/venv/bin/python" main.py --mode PRD
+```
+
+Run it directly to start the dashboard manually:
+
+```bash
+./start.sh
+```
+
+To start it automatically on every boot, add it to the crontab:
+
+```bash
+crontab -e
+```
+```
+@reboot /home/administrator/weather_dashboard/start.sh >> /home/administrator/weather_dashboard/crontab.log 2>&1
+```
+
+### `update.sh`
+
+Pulls the latest code from a given branch, installs any new dependencies, and restarts the running dashboard.
+
+```bash
+./update.sh                     # update to the latest main
+./update.sh <branch-name>       # update to any other branch
+```
+
+What it does, in order:
+
+1. Fetches and checks out the given branch (defaults to `main`), then pulls the latest commit.
+2. Installs any new packages from `requirements.txt` into the existing virtual environment.
+3. Sends `SIGINT` to the running dashboard process (graceful e-ink shutdown), then restarts it via `start.sh`.
+
+Check the running dashboard's log:
+
+```bash
+tail -f crontab.log
+```
+
+Check what commit is currently deployed:
+
+```bash
+git log -1 --oneline
+```
+
+![Version](https://img.shields.io/badge/version-1.3.0-green.svg)
 
 ## Change Log
 
@@ -94,6 +151,7 @@ Logging is output to stdout by default and can be controlled via the `log_level`
 - **1.2.0** – Added special weather tips data to warning information bracket; refactored to move functions into `main.py`  
 - **1.2.1** – Fine-tuned fonts and layouts
 - **1.2.2** - Always display specific corresponding icons for special weather situation such as Typhoons
+- **1.3.0** - Redesigned dashboard layout: colour title bar and warning badges (severity-based), alert panel with warning details, and 7-day temperature range bars
 
 ## Credits
 
