@@ -36,6 +36,22 @@ CONFIG_FILE = 'settings.ini'
 FONT_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'static/fonts')
 ICON_DIR_LARGE = './static/icon/large'
 ICON_DIR_SMALL = './static/icon/small'
+SMALL_ICON_SIZE = 56  # native assets are 65x65; scaled down a little for the new layout
+
+# Colors - matches the epd7in3e 6-color e-ink panel's palette exactly, so the
+# DEV preview (image.show()) renders identically to what the panel quantizes to.
+COLOR_BLACK = (0, 0, 0)
+COLOR_WHITE = (255, 255, 255)
+COLOR_YELLOW = (255, 255, 0)
+COLOR_RED = (255, 0, 0)
+COLOR_BLUE = (0, 0, 255)
+COLOR_GREEN = (0, 255, 0)
+
+RANGE_BAR_COLOR = COLOR_YELLOW  # stands in for the mockup's orange (not in the 6-color palette)
+
+# Keyword -> badge color for warning pills, checked in priority order (most severe first)
+WARNING_BADGE_RED_KEYWORDS = ('黑色', '紅色', '十號', '九號', '八號', '海嘯', '霜凍')
+WARNING_BADGE_YELLOW_KEYWORDS = ('黃色', '一號', '三號')
 
 # Load Configuration
 def load_config():
@@ -127,13 +143,26 @@ def process_data(raw, settings):
 # Draw Screen
 def draw_screen(data, fonts, settings, fill_color):
     SHIFT_RIGHT = 17
+    LEFT_COL_X = 26
+    LEFT_COL_WIDTH = 388
+    DIVIDER_X = 430
+    RIGHT_COL_X = 452
+    RIGHT_COL_RIGHT = DISPLAY_WIDTH - 26  # 774
     image = Image.new('RGB', (DISPLAY_WIDTH, DISPLAY_HEIGHT), 'white')
     draw = ImageDraw.Draw(image)
 
-    # Title
+    # Title bar - colored by the most severe active warning (red > yellow > blue)
+    title_bar_color = get_overall_warning_color(data['warnsum_items'])
+    title_text_color = COLOR_BLACK if title_bar_color == COLOR_YELLOW else COLOR_WHITE
+    draw.rectangle([0, 0, DISPLAY_WIDTH, 56], fill=title_bar_color)
     today_title = datetime.now().strftime('%A, %B %d')
-    title_w, title_h = fonts['bold'].getbbox(today_title)[2:]
-    draw.text(((DISPLAY_WIDTH-title_w)/2, 18), today_title, font=fonts['bold'], fill=fill_color)
+    draw.text((LEFT_COL_X, 13), today_title, font=fonts['large'], fill=title_text_color)
+    last_update_text = datetime.now().strftime("最後更新: %Y-%m-%d %H:%M")
+    update_w = fonts['last_update'].getbbox(last_update_text)[2]
+    draw.text((RIGHT_COL_RIGHT - update_w, 20), last_update_text, font=fonts['last_update'], fill=title_text_color)
+
+    # Column divider
+    draw.line([(DIVIDER_X, 74), (DIVIDER_X, 326)], fill=COLOR_BLACK, width=2)
 
     # Current Weather
     # Mapping of special weather warning names to icon filenames
@@ -160,25 +189,78 @@ def draw_screen(data, fonts, settings, fill_color):
         weather_icon = Image.open(f"{ICON_DIR_LARGE}/{warnsum_icon}")
     else:
         weather_icon = Image.open(f"{ICON_DIR_LARGE}/{data['current_weather_icon']}.bmp")
-    image.paste(weather_icon, (56, 54))
-    draw.text((280, 68), str(data['current_temp']), font=fonts['current_temp'], fill=fill_color)
-    draw.text((385, 78), '°C', font=fonts['degree_celsius'], fill=fill_color)
-    draw.text((238, 174), f"{data['max_temp']}° / {data['min_temp']}°", font=fonts['normal'], fill=fill_color)
-    draw.text((340, 173), "體感温度:", font=fonts['chinese_light_large'], fill=fill_color)
-    draw.text((416, 170), f"{data['feels_like']}°", font=fonts['large'], fill=fill_color)
+    # Icons are 150x150, but the alert-panel row only has 138px (74 to the divider at
+    # 212) before it collides with the badges row below - scale down to fit.
+    HERO_ICON_SIZE = 130
+    weather_icon = weather_icon.resize((HERO_ICON_SIZE, HERO_ICON_SIZE), Image.LANCZOS)
+    image.paste(weather_icon, (LEFT_COL_X, 74))
+
+    # Vertically center the [number + info row] block as a unit within the icon's height,
+    # rather than centering just the number on the icon's midpoint - that left a bigger
+    # gap above the number than below the info row, since the row's own height wasn't
+    # accounted for.
+    ROW_GAP = 14
+    temp_text = str(data['current_temp'])
+    temp_bbox = draw.textbbox((0, 0), temp_text, font=fonts['current_temp'])
+    temp_ink_height = temp_bbox[3] - temp_bbox[1]
+    info_bbox = draw.textbbox((0, 0), "體感温度:", font=fonts['chinese_light_large'])
+    info_ink_height = info_bbox[3] - info_bbox[1]
+    block_height = temp_ink_height + ROW_GAP + info_ink_height
+    temp_ink_top = 74 + (HERO_ICON_SIZE - block_height) / 2
+    temp_y = temp_ink_top - temp_bbox[1]
+
+    # The info row is wider than the number + degree sign (it also carries the feels-like
+    # text), so left-aligning both at the same x leaves the number looking off-center.
+    # Measure the info row's total width first and center the number over its span.
+    INFO_ROW_X = 200
+    info_row_segments = (
+        (f"{data['max_temp']}°", fonts['normal'], COLOR_RED, 6),
+        ("/", fonts['normal'], fill_color, 6),
+        (f"{data['min_temp']}°", fonts['normal'], COLOR_BLUE, 20),
+        ("體感温度:", fonts['chinese_light_large'], fill_color, 6),
+        (f"{data['feels_like']}°", fonts['normal'], fill_color, 0),
+    )
+    info_row_width = sum(draw.textlength(text, font=font) + gap_after for text, font, _, gap_after in info_row_segments)
+
+    temp_w = draw.textlength(temp_text, font=fonts['current_temp'])
+    degree_w = draw.textlength('°C', font=fonts['degree_celsius'])
+    temp_block_width = temp_w + 4 + degree_w
+    temp_x = INFO_ROW_X + (info_row_width - temp_block_width) / 2
+    draw.text((temp_x, temp_y), temp_text, font=fonts['current_temp'], fill=fill_color)
+    draw.text((temp_x + temp_w + 4, temp_y + 10), '°C', font=fonts['degree_celsius'], fill=fill_color)
+
+    # Cumulative x-positioning keeps this row inside the alert column regardless of
+    # digit count, instead of the fixed offsets that used to overrun the divider.
+    info_row_y = temp_ink_top + temp_ink_height + ROW_GAP - info_bbox[1]
+    x = INFO_ROW_X
+    for text, font, color, gap_after in info_row_segments:
+        draw.text((x, info_row_y), text, font=font, fill=color)
+        x += draw.textlength(text, font=font) + gap_after
+
+    # Warning badges + detail (alert panel)
+    warning_items = process_warning_items(data['warnsum_items'])
+    draw.line([(LEFT_COL_X, 212), (LEFT_COL_X + LEFT_COL_WIDTH, 212)], fill=COLOR_BLACK, width=1)
+    badges_bottom_y = draw_warning_badges(draw, warning_items, fonts['chinese_bold'], LEFT_COL_X, 224, LEFT_COL_WIDTH)
+
+    detail_start_y = badges_bottom_y + 8
+    detail_available_height = 326 - detail_start_y
+    line_height = fonts['chinese_normal'].size + 6
+    max_detail_lines = max(1, detail_available_height // line_height)
+    wrapped_warning = wrap_and_truncate(data['warninfo_items']['1'], 27, min(settings['max_lines'], max_detail_lines))
+    draw.multiline_text((LEFT_COL_X, detail_start_y), "\n".join(wrapped_warning), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
     # Sunrise/Sunset/Wind/Humidity
     static_info = [
-        ('sunset.bmp', '日落', data['sunset'], (480, 70), (570, 81), 560 + SHIFT_RIGHT),
-        ('sunrise.bmp', '日出', data['sunrise'], (630, 70), (720, 81), 710 + SHIFT_RIGHT),
+        ('sunset.bmp', '日落', data['sunset'], (RIGHT_COL_X, 82), (RIGHT_COL_X + 90, 93), RIGHT_COL_X + 80 + SHIFT_RIGHT),
+        ('sunrise.bmp', '日出', data['sunrise'], (RIGHT_COL_X + 182, 82), (RIGHT_COL_X + 272, 93), RIGHT_COL_X + 262 + SHIFT_RIGHT),
     ]
 
     dynamic_info = [
-        ('wind.bmp', '風速', f"{data['wind_dir']}@{data['wind_speed']}", 'm/s', (480, 145), (570, 156), 560 + SHIFT_RIGHT),
-        ('humidity.bmp', '濕度', f"{data['current_humidity']}", '%', (630, 145), (720, 156), 710 + SHIFT_RIGHT)
+        ('wind.bmp', '風速', f"{data['wind_dir']}@{data['wind_speed']}", 'm/s', (RIGHT_COL_X, 168), (RIGHT_COL_X + 90, 179), RIGHT_COL_X + 80 + SHIFT_RIGHT),
+        ('humidity.bmp', '濕度', f"{data['current_humidity']}", '%', (RIGHT_COL_X + 182, 168), (RIGHT_COL_X + 272, 179), RIGHT_COL_X + 262 + SHIFT_RIGHT)
     ]
     for icon_file, label, value, img_pos, label_pos, value_center_x in static_info:
-        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_file}")
+        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_file}").resize((SMALL_ICON_SIZE, SMALL_ICON_SIZE), Image.LANCZOS)
         image.paste(icon, img_pos)
 
         # Center-align label
@@ -191,7 +273,7 @@ def draw_screen(data, fonts, settings, fill_color):
         draw.text((value_center_x - text_width // 2, img_pos[1] + 35), str(value), font=fonts['top_right_value'], fill=fill_color)
 
     for icon_file, label, value, unit, img_pos, label_pos, value_center_x in dynamic_info:
-        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_file}")
+        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_file}").resize((SMALL_ICON_SIZE, SMALL_ICON_SIZE), Image.LANCZOS)
         image.paste(icon, img_pos)
 
         # Center-align label
@@ -211,53 +293,61 @@ def draw_screen(data, fonts, settings, fill_color):
         draw.text((value_x, value_y), value_text, font=fonts['top_right_value'], fill=fill_color)
         draw.text((unit_x, unit_y), unit, font=fonts['unit'], fill=fill_color)
 
-    # Last update
-    last_update_text = datetime.now().strftime("最後更新: %Y-%m-%d %H:%M")
-    update_w = fonts['last_update'].getbbox(last_update_text)[2]
-    draw.text((760 - update_w, 15), last_update_text, font=fonts['last_update'], fill=fill_color)
+    draw.line([(RIGHT_COL_X, 152), (RIGHT_COL_RIGHT, 152)], fill=COLOR_BLACK, width=1)
+    draw.line([(RIGHT_COL_X, 238), (RIGHT_COL_RIGHT, 238)], fill=COLOR_BLACK, width=1)
 
-    # Forecast period description
-    draw.text((480, 220), f"{data['forecast_period']}:", font=fonts['chinese_bold'], fill=fill_color)
-    wrapped_forecast = textwrap.wrap(data['forecast_description'], width=19)
-    if len(wrapped_forecast) > settings['max_lines']:
-        wrapped_forecast = wrapped_forecast[:settings['max_lines']]
-        # Add ellipsis to the last line if it's truncated
-        last_line = wrapped_forecast[-1]
-        if len(last_line) >= 16:  # Leave space for ellipsis
-            wrapped_forecast[-1] = last_line[:16] + '…'
-    draw.multiline_text((480, 248), "\n".join(wrapped_forecast), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
+    # Forecast period description - vertically centered as a block within its grid
+    # cell (between the tiles divider and the 7-day divider), rather than pinned to top.
+    FORECAST_SECTION_TOP, FORECAST_SECTION_BOTTOM = 238, 332
+    LABEL_DESC_GAP = 10
+    label_text = f"{data['forecast_period']}:"
+    label_bbox = draw.textbbox((0, 0), label_text, font=fonts['chinese_bold'])
+    label_height = label_bbox[3] - label_bbox[1]
+    max_forecast_lines = max(1, (FORECAST_SECTION_BOTTOM - FORECAST_SECTION_TOP - label_height - LABEL_DESC_GAP) // line_height)
+    wrapped_forecast = wrap_and_truncate([data['forecast_description']], 19, min(settings['max_lines'], max_forecast_lines))
+    desc_text = "\n".join(wrapped_forecast)
+    desc_bbox = draw.multiline_textbbox((0, 0), desc_text, font=fonts['chinese_normal'], spacing=3)
+    desc_height = desc_bbox[3] - desc_bbox[1]
+    block_top = FORECAST_SECTION_TOP + (FORECAST_SECTION_BOTTOM - FORECAST_SECTION_TOP - label_height - LABEL_DESC_GAP - desc_height) // 2
 
-    # Warning Summary
-    position_warning_items(draw, process_warning_items(data['warnsum_items']), fonts['chinese_bold'], fonts['chinese_light'], fill_color, start_x=56, y=220)
+    label_y = block_top - label_bbox[1]
+    draw.text((RIGHT_COL_X, label_y), label_text, font=fonts['chinese_bold'], fill=fill_color)
+    desc_y = block_top + label_height + LABEL_DESC_GAP - desc_bbox[1]
+    draw.multiline_text((RIGHT_COL_X, desc_y), desc_text, font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
-    # Warning Info
-    wrapped_warning = []
-    for line in data['warninfo_items']['1']:
-        wrapped_warning.extend(textwrap.wrap(line, width=27))
-    if len(wrapped_warning) > settings['max_lines']:
-        wrapped_warning = wrapped_warning[:settings['max_lines']]
-        # Add ellipsis to the last line if it's truncated
-        last_line = wrapped_warning[-1]
-        if len(last_line) >= 24:  # Leave space for ellipsis
-            wrapped_warning[-1] = last_line[:24] + '…'
-    draw.multiline_text((56, 248), "\n".join(wrapped_warning), font=fonts['chinese_normal'], fill=fill_color, spacing=3)
+    # 7-day forecast with range bars
+    draw.line([(LEFT_COL_X, 332), (RIGHT_COL_RIGHT, 332)], fill=COLOR_BLACK, width=2)
 
-    # 7-day forecast
-    BOX_WIDTH = 100
-    BOX_HEIGHT = 160
-    for i, day in enumerate(data['seven_day_forecast']):
+    seven_day = data['seven_day_forecast']
+    if seven_day:
+        scale_min = min(day['forecastMintemp']['value'] for day in seven_day)
+        scale_max = max(day['forecastMaxtemp']['value'] for day in seven_day)
+    else:
+        scale_min = scale_max = 0
+
+    DAY_COL_WIDTH = (RIGHT_COL_RIGHT - LEFT_COL_X) / len(seven_day) if seven_day else 0
+    BOX_WIDTH = int(DAY_COL_WIDTH)
+    BOX_HEIGHT = 110
+    BAR_WIDTH, BAR_HEIGHT = 80, 9
+    for i, day in enumerate(seven_day):
         week = day['week']
         min_temp = day['forecastMintemp']['value']
         max_temp = day['forecastMaxtemp']['value']
         icon_code = day['ForecastIcon']
         day_img = Image.new('RGB', (BOX_WIDTH, BOX_HEIGHT), color='white')
         day_draw = ImageDraw.Draw(day_img)
-        day_draw.text((BOX_WIDTH // 2, 5), week, fill=fill_color, anchor='ma', font=fonts['chinese_forecast'])
-        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_code}.bmp")
-        day_img.paste(icon, (20, 30))
-        temp_text = f"{max_temp}° / {min_temp}°"
-        day_draw.text((BOX_WIDTH // 2, 105), temp_text, fill=fill_color, anchor='ma', font=fonts['forecast_text'])
-        image.paste(day_img, (50 + i * BOX_WIDTH, 350))
+        day_draw.text((BOX_WIDTH // 2, 1), week, fill=fill_color, anchor='ma', font=fonts['chinese_forecast'])
+        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_code}.bmp").resize((SMALL_ICON_SIZE, SMALL_ICON_SIZE), Image.LANCZOS)
+        day_img.paste(icon, ((BOX_WIDTH - icon.width) // 2, 20))
+        bar_x = (BOX_WIDTH - BAR_WIDTH) // 2
+        draw_range_bar(day_draw, bar_x, 82, BAR_WIDTH, BAR_HEIGHT, min_temp, max_temp, scale_min, scale_max)
+        max_str, min_str = f"{max_temp}°", f" {min_temp}°"
+        max_tw = day_draw.textlength(max_str, font=fonts['forecast_text'])
+        min_tw = day_draw.textlength(min_str, font=fonts['forecast_text'])
+        temp_x = (BOX_WIDTH - max_tw - min_tw) // 2
+        day_draw.text((temp_x, 95), max_str, fill=COLOR_RED, font=fonts['forecast_text'])
+        day_draw.text((temp_x + max_tw, 95), min_str, fill=COLOR_BLUE, font=fonts['forecast_text'])
+        image.paste(day_img, (LEFT_COL_X + round(i * DAY_COL_WIDTH), 340))
 
     return image
 
@@ -298,44 +388,73 @@ def process_warning_items(items):
     
     return result
 
-def position_warning_items(draw, items, bold_font, normal_font, fill_color, start_x=56, y=220, max_width=380):
-    """Position warning items in left, center, and right positions"""
-    num_items = len(items)
-    
-    if num_items == 1:
-        # Single item - left align
-        text = items[1]
-        draw.text((start_x, y), text, font=bold_font, fill=fill_color)
-    
-    elif num_items == 2:
-        # Two items - position at left and center
-        left_text = items[1]
-        center_text = items[2]
-        # Left align first item
-        draw.text((start_x, y), left_text, font=bold_font, fill=fill_color)
-        # Center align second item
-        center_width = draw.textlength(center_text, font=bold_font)
-        center_x = start_x + (max_width - center_width) // 2
-        draw.text((center_x, y), center_text, font=normal_font, fill=fill_color)
-    
-    elif num_items == 3:
-        # Three items - position at left, center and right
-        left_text = items[1]
-        center_text = items[2]
-        right_text = items[3]
-        
-        # Left align first item
-        draw.text((start_x, y), left_text, font=bold_font, fill=fill_color)
-        
-        # Center the middle item
-        center_width = draw.textlength(center_text, font=normal_font)
-        center_x = start_x + (max_width - center_width) // 2
-        draw.text((center_x, y), center_text, font=normal_font, fill=fill_color)
-        
-        # Right align last item
-        right_width = draw.textlength(right_text, font=normal_font)
-        right_x = start_x + max_width - right_width
-        draw.text((right_x, y), right_text, font=normal_font, fill=fill_color)
+def wrap_and_truncate(lines, wrap_width, max_lines):
+    """Wrap text lines and cap to max_lines, adding an ellipsis to a truncated last line."""
+    wrapped = []
+    for line in lines:
+        wrapped.extend(textwrap.wrap(line, width=wrap_width))
+    if len(wrapped) > max_lines:
+        wrapped = wrapped[:max_lines]
+        last_line = wrapped[-1]
+        threshold = wrap_width - 3  # leave space for ellipsis
+        if len(last_line) >= threshold:
+            wrapped[-1] = last_line[:threshold] + '…'
+    return wrapped
+
+def get_badge_color(label):
+    """Map a warning label to a badge color by severity keyword."""
+    if any(keyword in label for keyword in WARNING_BADGE_RED_KEYWORDS):
+        return COLOR_RED
+    if any(keyword in label for keyword in WARNING_BADGE_YELLOW_KEYWORDS):
+        return COLOR_YELLOW
+    return COLOR_BLUE
+
+def get_overall_warning_color(warnsum_items):
+    """Title bar color: red if any warning is red, else yellow if any is yellow, else blue."""
+    colors = [get_badge_color(label) for label in warnsum_items.values()]
+    if COLOR_RED in colors:
+        return COLOR_RED
+    if COLOR_YELLOW in colors:
+        return COLOR_YELLOW
+    return COLOR_BLUE
+
+def draw_pill_badge(draw, x, y, text, font, bg_color, pad_x=10, pad_y=4):
+    """Draw a single rounded pill badge and return its (width, height)."""
+    # Black text on yellow for contrast (matches HKO's own warning color convention); white elsewhere.
+    text_color = COLOR_BLACK if bg_color == COLOR_YELLOW else COLOR_WHITE
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = (bbox[2] - bbox[0]) + pad_x * 2
+    height = (bbox[3] - bbox[1]) + pad_y * 2
+    draw.rounded_rectangle([x, y, x + width, y + height], radius=height // 2, fill=bg_color)
+    draw.text((x + pad_x - bbox[0], y + pad_y - bbox[1]), text, font=font, fill=text_color)
+    return width, height
+
+def draw_warning_badges(draw, items, font, start_x, start_y, max_width, gap=6, line_gap=6):
+    """Draw warning items as colored pill badges, wrapping to a new row if needed. Returns bottom y."""
+    x, y, row_height = start_x, start_y, 0
+    for key in sorted(items.keys()):
+        text = items[key]
+        bbox = draw.textbbox((0, 0), text, font=font)
+        badge_width = (bbox[2] - bbox[0]) + 20
+        if x != start_x and x + badge_width > start_x + max_width:
+            x = start_x
+            y += row_height + line_gap
+            row_height = 0
+        badge_w, badge_h = draw_pill_badge(draw, x, y, text, font, get_badge_color(text))
+        x += badge_w + gap
+        row_height = max(row_height, badge_h)
+    return y + row_height
+
+def draw_range_bar(draw, x, y, width, height, day_min, day_max, scale_min, scale_max):
+    """Draw a min-max range bar track with a filled segment scaled to (scale_min, scale_max)."""
+    draw.rounded_rectangle([x, y, x + width, y + height], radius=height // 2, outline=COLOR_BLACK, width=1, fill=COLOR_WHITE)
+    span = max(scale_max - scale_min, 1)
+    seg_left = x + 1 + (day_min - scale_min) / span * (width - 2)
+    seg_right = x + 1 + (day_max - scale_min) / span * (width - 2)
+    if seg_right - seg_left < 3:
+        mid = (seg_left + seg_right) / 2
+        seg_left, seg_right = mid - 1.5, mid + 1.5
+    draw.rounded_rectangle([seg_left, y + 1, seg_right, y + height - 1], radius=(height - 2) // 2, fill=RANGE_BAR_COLOR)
 
 def process_warning_data(warnsum_json, warninginfo_json, swt_json):
     # Step 1: Merge warnsum and swt entries
