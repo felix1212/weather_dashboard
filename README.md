@@ -150,7 +150,7 @@ Check what commit is currently deployed:
 git log -1 --oneline
 ```
 
-![Version](https://img.shields.io/badge/version-1.3.0-green.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-green.svg)
 
 ## Change Log
 
@@ -160,6 +160,7 @@ git log -1 --oneline
 - **1.2.1** – Fine-tuned fonts and layouts
 - **1.2.2** - Always display specific corresponding icons for special weather situation such as Typhoons
 - **1.3.0** - Redesigned dashboard layout: colour title bar and warning badges (severity-based), alert panel with warning details, and 7-day temperature range bars
+- **1.3.1** - Replaced 7-day range bars with a plain max/min temperature row (evenly spaced day boxes); added a black severity tier to warning colours (黑色/十號/九號/霜凍), red now also covers 八號/海嘯/寒冷; layout polish on the current-weather panel
 
 ## Credits
 

@@ -19,6 +19,8 @@ Change log
 1.2.0 - Added sepcial weather tips data to warning information bracket. Further refactor application to move required functions to main.
 1.2.1 - Fine-tuned fonts and layouts
 1.2.2 - Always display specific corresponding icons for special weather situation such as Typhoons
+1.3.0 - Redesigned dashboard layout: colour title bar and warning badges (severity-based), alert panel with warning details, and 7-day temperature range bars
+1.3.1 - Replaced 7-day range bars with a plain max/min temperature row (evenly spaced day boxes); added a black severity tier to warning colours (黑色/十號/九號/霜凍), red now also covers 八號/海嘯/寒冷; layout polish on the current-weather panel
 '''
 
 # Logger
@@ -47,10 +49,9 @@ COLOR_RED = (255, 0, 0)
 COLOR_BLUE = (0, 0, 255)
 COLOR_GREEN = (0, 255, 0)
 
-RANGE_BAR_COLOR = COLOR_YELLOW  # stands in for the mockup's orange (not in the 6-color palette)
-
 # Keyword -> badge color for warning pills, checked in priority order (most severe first)
-WARNING_BADGE_RED_KEYWORDS = ('黑色', '紅色', '十號', '九號', '八號', '海嘯', '霜凍')
+WARNING_BADGE_BLACK_KEYWORDS = ('黑色', '十號', '九號', '霜凍')
+WARNING_BADGE_RED_KEYWORDS = ('紅色', '八號', '海嘯', '寒冷')
 WARNING_BADGE_YELLOW_KEYWORDS = ('黃色', '一號', '三號')
 
 # Load Configuration
@@ -193,7 +194,7 @@ def draw_screen(data, fonts, settings, fill_color):
     # 212) before it collides with the badges row below - scale down to fit.
     HERO_ICON_SIZE = 130
     weather_icon = weather_icon.resize((HERO_ICON_SIZE, HERO_ICON_SIZE), Image.LANCZOS)
-    image.paste(weather_icon, (LEFT_COL_X, 74))
+    image.paste(weather_icon, (LEFT_COL_X + 20, 74))
 
     # Vertically center the [number + info row] block as a unit within the icon's height,
     # rather than centering just the number on the icon's midpoint - that left a bigger
@@ -231,7 +232,11 @@ def draw_screen(data, fonts, settings, fill_color):
 
     # Cumulative x-positioning keeps this row inside the alert column regardless of
     # digit count, instead of the fixed offsets that used to overrun the divider.
-    info_row_y = temp_ink_top + temp_ink_height + ROW_GAP - info_bbox[1]
+    # Center the row in the gap between the big number and the divider line at y=212,
+    # rather than butting it right up against the number - that left dead space below.
+    GRID_LINE_Y = 212
+    temp_bottom = temp_ink_top + temp_ink_height
+    info_row_y = temp_bottom + (GRID_LINE_Y - temp_bottom - info_ink_height) / 2 - info_bbox[1]
     x = INFO_ROW_X
     for text, font, color, gap_after in info_row_segments:
         draw.text((x, info_row_y), text, font=font, fill=color)
@@ -315,20 +320,14 @@ def draw_screen(data, fonts, settings, fill_color):
     desc_y = block_top + label_height + LABEL_DESC_GAP - desc_bbox[1]
     draw.multiline_text((RIGHT_COL_X, desc_y), desc_text, font=fonts['chinese_normal'], fill=fill_color, spacing=3)
 
-    # 7-day forecast with range bars
+    # 7-day forecast
     draw.line([(LEFT_COL_X, 332), (RIGHT_COL_RIGHT, 332)], fill=COLOR_BLACK, width=2)
 
     seven_day = data['seven_day_forecast']
-    if seven_day:
-        scale_min = min(day['forecastMintemp']['value'] for day in seven_day)
-        scale_max = max(day['forecastMaxtemp']['value'] for day in seven_day)
-    else:
-        scale_min = scale_max = 0
 
     DAY_COL_WIDTH = (RIGHT_COL_RIGHT - LEFT_COL_X) / len(seven_day) if seven_day else 0
     BOX_WIDTH = int(DAY_COL_WIDTH)
     BOX_HEIGHT = 110
-    BAR_WIDTH, BAR_HEIGHT = 80, 9
     for i, day in enumerate(seven_day):
         week = day['week']
         min_temp = day['forecastMintemp']['value']
@@ -336,17 +335,31 @@ def draw_screen(data, fonts, settings, fill_color):
         icon_code = day['ForecastIcon']
         day_img = Image.new('RGB', (BOX_WIDTH, BOX_HEIGHT), color='white')
         day_draw = ImageDraw.Draw(day_img)
-        day_draw.text((BOX_WIDTH // 2, 1), week, fill=fill_color, anchor='ma', font=fonts['chinese_forecast'])
-        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_code}.bmp").resize((SMALL_ICON_SIZE, SMALL_ICON_SIZE), Image.LANCZOS)
-        day_img.paste(icon, ((BOX_WIDTH - icon.width) // 2, 20))
-        bar_x = (BOX_WIDTH - BAR_WIDTH) // 2
-        draw_range_bar(day_draw, bar_x, 82, BAR_WIDTH, BAR_HEIGHT, min_temp, max_temp, scale_min, scale_max)
-        max_str, min_str = f"{max_temp}°", f" {min_temp}°"
+
+        max_str, slash_str, min_str = f"{max_temp}°", " / ", f"{min_temp}°"
         max_tw = day_draw.textlength(max_str, font=fonts['forecast_text'])
+        slash_tw = day_draw.textlength(slash_str, font=fonts['forecast_text'])
         min_tw = day_draw.textlength(min_str, font=fonts['forecast_text'])
-        temp_x = (BOX_WIDTH - max_tw - min_tw) // 2
-        day_draw.text((temp_x, 95), max_str, fill=COLOR_RED, font=fonts['forecast_text'])
-        day_draw.text((temp_x + max_tw, 95), min_str, fill=COLOR_BLUE, font=fonts['forecast_text'])
+        temp_x = (BOX_WIDTH - max_tw - slash_tw - min_tw) // 2
+
+        # Evenly space the week label, icon, and temp row across the box now that the
+        # range bar is gone, instead of the old fixed y-offsets that assumed its height.
+        label_bbox = day_draw.textbbox((0, 0), week, font=fonts['chinese_forecast'])
+        label_h = label_bbox[3] - label_bbox[1]
+        temp_bbox = day_draw.textbbox((0, 0), max_str, font=fonts['forecast_text'])
+        temp_h = temp_bbox[3] - temp_bbox[1]
+        gap = (BOX_HEIGHT - label_h - SMALL_ICON_SIZE - temp_h) // 4
+
+        label_y = gap
+        icon_y = label_y + label_h + gap
+        temp_y = icon_y + SMALL_ICON_SIZE + gap
+
+        day_draw.text((BOX_WIDTH // 2, label_y), week, fill=fill_color, anchor='ma', font=fonts['chinese_forecast'])
+        icon = Image.open(f"{ICON_DIR_SMALL}/{icon_code}.bmp").resize((SMALL_ICON_SIZE, SMALL_ICON_SIZE), Image.LANCZOS)
+        day_img.paste(icon, ((BOX_WIDTH - icon.width) // 2, icon_y))
+        day_draw.text((temp_x, temp_y), max_str, fill=COLOR_RED, font=fonts['forecast_text'])
+        day_draw.text((temp_x + max_tw, temp_y), slash_str, fill=fill_color, font=fonts['forecast_text'])
+        day_draw.text((temp_x + max_tw + slash_tw, temp_y), min_str, fill=COLOR_BLUE, font=fonts['forecast_text'])
         image.paste(day_img, (LEFT_COL_X + round(i * DAY_COL_WIDTH), 340))
 
     return image
@@ -403,6 +416,8 @@ def wrap_and_truncate(lines, wrap_width, max_lines):
 
 def get_badge_color(label):
     """Map a warning label to a badge color by severity keyword."""
+    if any(keyword in label for keyword in WARNING_BADGE_BLACK_KEYWORDS):
+        return COLOR_BLACK
     if any(keyword in label for keyword in WARNING_BADGE_RED_KEYWORDS):
         return COLOR_RED
     if any(keyword in label for keyword in WARNING_BADGE_YELLOW_KEYWORDS):
@@ -410,8 +425,10 @@ def get_badge_color(label):
     return COLOR_BLUE
 
 def get_overall_warning_color(warnsum_items):
-    """Title bar color: red if any warning is red, else yellow if any is yellow, else blue."""
+    """Title bar color: black if any warning is black, else red, else yellow, else blue."""
     colors = [get_badge_color(label) for label in warnsum_items.values()]
+    if COLOR_BLACK in colors:
+        return COLOR_BLACK
     if COLOR_RED in colors:
         return COLOR_RED
     if COLOR_YELLOW in colors:
@@ -444,17 +461,6 @@ def draw_warning_badges(draw, items, font, start_x, start_y, max_width, gap=6, l
         x += badge_w + gap
         row_height = max(row_height, badge_h)
     return y + row_height
-
-def draw_range_bar(draw, x, y, width, height, day_min, day_max, scale_min, scale_max):
-    """Draw a min-max range bar track with a filled segment scaled to (scale_min, scale_max)."""
-    draw.rounded_rectangle([x, y, x + width, y + height], radius=height // 2, outline=COLOR_BLACK, width=1, fill=COLOR_WHITE)
-    span = max(scale_max - scale_min, 1)
-    seg_left = x + 1 + (day_min - scale_min) / span * (width - 2)
-    seg_right = x + 1 + (day_max - scale_min) / span * (width - 2)
-    if seg_right - seg_left < 3:
-        mid = (seg_left + seg_right) / 2
-        seg_left, seg_right = mid - 1.5, mid + 1.5
-    draw.rounded_rectangle([seg_left, y + 1, seg_right, y + height - 1], radius=(height - 2) // 2, fill=RANGE_BAR_COLOR)
 
 def process_warning_data(warnsum_json, warninginfo_json, swt_json):
     # Step 1: Merge warnsum and swt entries
