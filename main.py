@@ -21,6 +21,7 @@ Change log
 1.2.2 - Always display specific corresponding icons for special weather situation such as Typhoons
 1.3.0 - Redesigned dashboard layout: colour title bar and warning badges (severity-based), alert panel with warning details, and 7-day temperature range bars
 1.3.1 - Replaced 7-day range bars with a plain max/min temperature row (evenly spaced day boxes); added a black severity tier to warning colours (黑色/十號/九號/霜凍), red now also covers 八號/海嘯/寒冷; layout polish on the current-weather panel
+1.3.2 - Title bar and badge now show green when no warnings are active (previously blue); blue retained as the low-severity tier for unclassified warnings such as 雷暴警告/特別天氣提示
 '''
 
 # Logger
@@ -53,6 +54,9 @@ COLOR_GREEN = (0, 255, 0)
 WARNING_BADGE_BLACK_KEYWORDS = ('黑色', '十號', '九號', '霜凍')
 WARNING_BADGE_RED_KEYWORDS = ('紅色', '八號', '海嘯', '寒冷')
 WARNING_BADGE_YELLOW_KEYWORDS = ('黃色', '一號', '三號')
+# Label substituted when HKO reports nothing active - matched exactly (not by keyword) so
+# it can claim green while blue stays the tier for real-but-unclassified warnings.
+NO_WARNINGS_LABEL = '沒有天氣警告'
 
 # Load Configuration
 def load_config():
@@ -120,8 +124,8 @@ def process_data(raw, settings):
             sunrise, sunset = str(day[1]), str(day[3])
 
     warnsum_items, warninfo_items = process_warning_data(raw['warning_summary'], raw['warning_info'], raw['special_weather'])
-    warnsum_items = warnsum_items or {'1': '沒有天氣警告'}
-    warninfo_items = warninfo_items or {'1': ['沒有天氣警告']}
+    warnsum_items = warnsum_items or {'1': NO_WARNINGS_LABEL}
+    warninfo_items = warninfo_items or {'1': [NO_WARNINGS_LABEL]}
     logger.info('Data processed successfully.')
     return {
         'forecast_period': raw['local_forecast']['forecastPeriod'],
@@ -152,9 +156,10 @@ def draw_screen(data, fonts, settings, fill_color):
     image = Image.new('RGB', (DISPLAY_WIDTH, DISPLAY_HEIGHT), 'white')
     draw = ImageDraw.Draw(image)
 
-    # Title bar - colored by the most severe active warning (red > yellow > blue)
+    # Title bar - green when all clear, otherwise the most severe active warning
+    # (black > red > yellow > blue)
     title_bar_color = get_overall_warning_color(data['warnsum_items'])
-    title_text_color = COLOR_BLACK if title_bar_color == COLOR_YELLOW else COLOR_WHITE
+    title_text_color = COLOR_BLACK if title_bar_color in (COLOR_YELLOW, COLOR_GREEN) else COLOR_WHITE
     draw.rectangle([0, 0, DISPLAY_WIDTH, 56], fill=title_bar_color)
     today_title = datetime.now().strftime('%A, %B %d')
     draw.text((LEFT_COL_X, 13), today_title, font=fonts['large'], fill=title_text_color)
@@ -387,7 +392,7 @@ def align_warnsum_items(warnsum_items, total_width=80):
 def process_warning_items(items):
     """Process warning items to ensure we have 1-3 properly formatted items"""
     if not items:
-        return {1: 'No warnings'}
+        return {1: NO_WARNINGS_LABEL}
     
     # Convert to list of tuples sorted by timestamp (if available) or maintain order
     items_list = list(items.items())
@@ -416,6 +421,8 @@ def wrap_and_truncate(lines, wrap_width, max_lines):
 
 def get_badge_color(label):
     """Map a warning label to a badge color by severity keyword."""
+    if label == NO_WARNINGS_LABEL:
+        return COLOR_GREEN
     if any(keyword in label for keyword in WARNING_BADGE_BLACK_KEYWORDS):
         return COLOR_BLACK
     if any(keyword in label for keyword in WARNING_BADGE_RED_KEYWORDS):
@@ -425,20 +432,16 @@ def get_badge_color(label):
     return COLOR_BLUE
 
 def get_overall_warning_color(warnsum_items):
-    """Title bar color: black if any warning is black, else red, else yellow, else blue."""
+    """Title bar color: the most severe badge colour present, green when nothing is active."""
     colors = [get_badge_color(label) for label in warnsum_items.values()]
-    if COLOR_BLACK in colors:
-        return COLOR_BLACK
-    if COLOR_RED in colors:
-        return COLOR_RED
-    if COLOR_YELLOW in colors:
-        return COLOR_YELLOW
-    return COLOR_BLUE
+    return next((c for c in (COLOR_BLACK, COLOR_RED, COLOR_YELLOW, COLOR_BLUE) if c in colors),
+                COLOR_GREEN)
 
 def draw_pill_badge(draw, x, y, text, font, bg_color, pad_x=10, pad_y=4):
     """Draw a single rounded pill badge and return its (width, height)."""
-    # Black text on yellow for contrast (matches HKO's own warning color convention); white elsewhere.
-    text_color = COLOR_BLACK if bg_color == COLOR_YELLOW else COLOR_WHITE
+    # Black text on yellow/green for contrast (yellow matches HKO's own warning color
+    # convention, and white on pure green is unreadable on the panel); white elsewhere.
+    text_color = COLOR_BLACK if bg_color in (COLOR_YELLOW, COLOR_GREEN) else COLOR_WHITE
     bbox = draw.textbbox((0, 0), text, font=font)
     width = (bbox[2] - bbox[0]) + pad_x * 2
     height = (bbox[3] - bbox[1]) + pad_y * 2
