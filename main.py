@@ -22,6 +22,7 @@ Change log
 1.3.0 - Redesigned dashboard layout: colour title bar and warning badges (severity-based), alert panel with warning details, and 7-day temperature range bars
 1.3.1 - Replaced 7-day range bars with a plain max/min temperature row (evenly spaced day boxes); added a black severity tier to warning colours (黑色/十號/九號/霜凍), red now also covers 八號/海嘯/寒冷; layout polish on the current-weather panel
 1.3.2 - Title bar and badge now show green when no warnings are active (previously blue); blue retained as the low-severity tier for unclassified warnings such as 雷暴警告/特別天氣提示
+1.3.3 - White text on the green title bar and badge; black was hard to read on the panel. Yellow keeps black text
 '''
 
 # Logger
@@ -159,7 +160,7 @@ def draw_screen(data, fonts, settings, fill_color):
     # Title bar - green when all clear, otherwise the most severe active warning
     # (black > red > yellow > blue)
     title_bar_color = get_overall_warning_color(data['warnsum_items'])
-    title_text_color = COLOR_BLACK if title_bar_color in (COLOR_YELLOW, COLOR_GREEN) else COLOR_WHITE
+    title_text_color = COLOR_BLACK if title_bar_color == COLOR_YELLOW else COLOR_WHITE
     draw.rectangle([0, 0, DISPLAY_WIDTH, 56], fill=title_bar_color)
     today_title = datetime.now().strftime('%A, %B %d')
     draw.text((LEFT_COL_X, 13), today_title, font=fonts['large'], fill=title_text_color)
@@ -439,9 +440,9 @@ def get_overall_warning_color(warnsum_items):
 
 def draw_pill_badge(draw, x, y, text, font, bg_color, pad_x=10, pad_y=4):
     """Draw a single rounded pill badge and return its (width, height)."""
-    # Black text on yellow/green for contrast (yellow matches HKO's own warning color
-    # convention, and white on pure green is unreadable on the panel); white elsewhere.
-    text_color = COLOR_BLACK if bg_color in (COLOR_YELLOW, COLOR_GREEN) else COLOR_WHITE
+    # Black text on yellow for contrast (matches HKO's own warning color convention); white
+    # elsewhere - including green, which reads better as white on the actual panel.
+    text_color = COLOR_BLACK if bg_color == COLOR_YELLOW else COLOR_WHITE
     bbox = draw.textbbox((0, 0), text, font=font)
     width = (bbox[2] - bbox[0]) + pad_x * 2
     height = (bbox[3] - bbox[1]) + pad_y * 2
